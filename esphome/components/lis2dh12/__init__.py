@@ -1,13 +1,16 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import i2c
-from esphome.const import (
-    CONF_ID,
-    CONF_RANGE,
-    CONF_DATA_RATE
-)
+from esphome.const import CONF_ID, CONF_DATA_RATE
 
-CONF_LOW_POWER_MODE = "low_power_mode"
+CONF_OPERATION_MODE = "operation_mode"
+CONF_FULL_SCALE_RANGE = "full_scale_range"
+CONF_RESET_TIMEOUT = "reset_timeout"
+
+
+# number for click threshold, limit, window and latency, require binary sensor
+# sensor for temperature, xyz
+# switch for double click and each axis and negative detectio
 
 # 4D 6D - sensor
 # click - binary sensor // 400Hz or higher
@@ -25,6 +28,13 @@ LIS2DH12Component = lis2dh12_ns.class_(
 
 CONF_LIS2DH12_ID = "lis2dh12_id"
 
+OperationMode = lis2dh12_ns.enum("OperationMode")
+Mode = {
+    "LOW_POWER": OperationMode.LOW_POWER,
+    "NORMAL": OperationMode.NORMAL,
+    "HIGH_RESOLUTION": OperationMode.HIGH_RESOLUTION
+}
+
 DataRate = lis2dh12_ns.enum("DataRate")
 Rate = {
     "1HZ": DataRate.ODR_1HZ,
@@ -34,7 +44,7 @@ Rate = {
     "100HZ": DataRate.ODR_100HZ,
     "200HZ": DataRate.ODR_200HZ,
     "400HZ": DataRate.ODR_400HZ,
-    "1344HZ": DataRate.ODR_5kHz376_LP_1kHz344_NM_HP,
+    "1344HZ": DataRate.ODR_5KHZ376_LP_1KHZ344_NM_HP,
     "1620HZ": DataRate.ODR_1KHZ620_LP,
     "5376HZ": DataRate.ODR_5KHZ376_LP_1KHZ344_NM_HP
 }
@@ -58,30 +68,31 @@ def validate_rate(data):
     - Validated configuration data.
     """
     # Extract configuration parameters
-    low_power_mode = data.get(CONF_LOW_POWER_MODE)
+    operation_mode = data.get(CONF_OPERATION_MODE)
     data_rate = data.get(CONF_DATA_RATE)
 
-    # Validate the data rate based on power_save_mode
-    if data_rate in ["1620HZ", "5376HZ"] and not low_power_mode:
-        raise cv.Invalid("1620HZ and 5376HZ data rates can only be used with low_power_mode=True.")
-    elif data_rate == "1344HZ" and low_power_mode:
-        raise cv.Invalid("1344HZ data rate can only be used with low_power_mode=False.")
+    # Validate the data rate based on operation mode
+    if data_rate in ["1620HZ", "5376HZ"] and operation_mode != "LOW_POWER":
+        raise cv.Invalid("1620HZ and 5376HZ data rates can only be used with operation mode LOW_POWER.")
+    elif data_rate == "1344HZ" and operation_mode == "LOW_POWER":
+        raise cv.Invalid("1344HZ data rate can only be used with operation mode other than LOW_POWER.")
 
     return data
 
-CONFIG_SCHEMA = (
+CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(LIS2DH12Component),
-            cv.Optional(CONF_LOW_POWER_MODE, default=False): cv.boolean,
-            cv.Optional(CONF_RANGE, default="2G"): cv.enum(Range, upper=True),
+            cv.Optional(CONF_OPERATION_MODE, default="HIGH_RESOLUTION"): cv.enum(Mode, upper=True, space="_"),
+            cv.Optional(CONF_FULL_SCALE_RANGE, default="2G"): cv.enum(Range, upper=True),
             cv.Optional(CONF_DATA_RATE, default="400HZ"): cv.enum(Rate, upper=True),
         }
     )
-    .validate(validate_rate)
     .extend(cv.COMPONENT_SCHEMA)
-    .extend(i2c.i2c_device_schema(0x19))
+    .extend(i2c.i2c_device_schema(0x19)),
+    validate_rate
 )
+
 
 FINAL_VALIDATE_SCHEMA = i2c.final_validate_device_schema(
     "lis2dh12",
@@ -90,6 +101,10 @@ FINAL_VALIDATE_SCHEMA = i2c.final_validate_device_schema(
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
+    
+    cg.add(var.set_operation_mode(config[CONF_OPERATION_MODE]))
+    cg.add(var.set_full_scale_range(config[CONF_FULL_SCALE_RANGE]))
+    cg.add(var.set_data_rate(config[CONF_DATA_RATE]))
         
     await cg.register_component(var, config)
     await i2c.register_i2c_device(var, config)
