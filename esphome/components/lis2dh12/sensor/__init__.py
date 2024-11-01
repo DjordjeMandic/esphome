@@ -41,17 +41,20 @@ TYPE_TEMPERATURE = "temperature"
 
 CONFIG_SCHEMA = cv.typed_schema(
     {
-        TYPE_ACCELEROMETER: cv.Schema(
-            {
-                cv.GenerateID(): cv.declare_id(LIS2DH12AccelerationSensors),
-                cv.GenerateID(CONF_LIS2DH12_ID): cv.use_id(LIS2DH12Component),
-                cv.Optional(CONF_ACCEL_X): accel_schema,
-                cv.Optional(CONF_ACCEL_Y): accel_schema,
-                cv.Optional(CONF_ACCEL_Z): accel_schema,
-            }
-        )
-        .extend(cv.has_at_least_one_key(CONF_ACCEL_X, CONF_ACCEL_Y, CONF_ACCEL_Z))
-        .extend(cv.polling_component_schema("60s")),
+        TYPE_ACCELEROMETER: cv.All(
+                cv.Schema(
+                {
+                    cv.GenerateID(): cv.declare_id(LIS2DH12AccelerationSensors),
+                    cv.GenerateID(CONF_LIS2DH12_ID): cv.use_id(LIS2DH12Component),
+                    cv.Optional(CONF_ACCEL_X): accel_schema,
+                    cv.Optional(CONF_ACCEL_Y): accel_schema,
+                    cv.Optional(CONF_ACCEL_Z): accel_schema,
+                    
+                }
+            )
+            .extend(cv.polling_component_schema("60s")),
+            cv.has_at_least_one_key(CONF_ACCEL_X, CONF_ACCEL_Y, CONF_ACCEL_Z)
+        ),        
         TYPE_TEMPERATURE: sensor.sensor_schema(
             LIS2DH12TemperatureSensor,
             unit_of_measurement=UNIT_CELSIUS,

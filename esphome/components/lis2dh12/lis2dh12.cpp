@@ -6,79 +6,40 @@
 namespace esphome {
 namespace lis2dh12 {
 
+/**
+ * @brief The tag used for logging
+ */
 static const char *const TAG = "lis2dh12";
 
+/**
+ * @brief Delay after applying configuration.
+ * 
+ * The chip needs some time to process the changes.
+ * According to the ST AN5005, 7ms is recommended.
+ */
 static const uint8_t TURN_ON_DELAY_MS = 7;
 
 #define LIS2DH12_CONFIGURATION_ERROR_CHECK(conf_current, conf_new, force, conf_log, func, error, info) \
-  if ( (conf_current != conf_new) || force) { \
-    ESP_LOGCONFIG(TAG, conf_log); \
-    if (func != ST_SUCCESS) { \
-      ESP_LOGE(TAG, error); \
-      this->state_ = ERROR_NOT_CONFIGURED; \
-      this->mark_failed(); \
-      return; \
+  if ( this->state_ == CONFIGURING_DEVICE ) { \
+    if ( (conf_current != conf_new) || force) { \
+      ESP_LOGCONFIG(TAG, conf_log); \
+      if (func != ST_SUCCESS) { \
+        ESP_LOGE(TAG, error); \
+        this->state_ = ERROR_NOT_CONFIGURED; \
+      } \
+      conf_current = conf_new; \
+    } else { \
+      ESP_LOGV(TAG, info); \
     } \
-    conf_current = conf_new; \
-  } else { \
-    ESP_LOGV(TAG, info); \
   }
 
 
-void LIS2DH12Component::setup() {
-  ESP_LOGCONFIG(TAG, "Setting up LIS2DH12...");
-  this->state_ = SEARCHING_FOR_DEVICE;
-  this->internal_setup(0);
-}
+void LIS2DH12Component::mark_failed() {
+  // Call the base class method to mark the component as failed
+  Component::mark_failed();
 
-
-void LIS2DH12Component::internal_setup(uint8_t stage) {
-  switch(stage) {
-    case 0:
-      // Identify the device
-      ESP_LOGCONFIG(TAG, "  Identifying device...");
-      this->state_ = SEARCHING_FOR_DEVICE;
-      if (!this->is_device_present()) {
-        ESP_LOGE(TAG, "Device not found");
-        this->state_ = ERROR_NOT_FOUND;
-        this->mark_failed();
-        return;
-      }
-      this->set_timeout("configDev", 0, [this]() { this->internal_setup(1); });
-      break;
-    case 1:
-      // Configure the device
-      ESP_LOGCONFIG(TAG, "  Configuring device...");
-      this->apply_device_configuration(this->new_config_, true);
-      if (this->state_ == ERROR_NOT_CONFIGURED) {
-        ESP_LOGE(TAG, "Failed configuring device");
-        this->state_ = ERROR_NOT_CONFIGURED;
-        this->mark_failed();
-        return;
-      }
-      this->set_timeout("readyDev", TURN_ON_DELAY_MS, [this]() { this->internal_setup(2); });
-    case 2:
-      // The device is ready
-      uint8_t reference;
-      if (lis2dh12_filter_reference_get(&lis2dh12_dev_ctx, &reference) != ST_SUCCESS) {
-        ESP_LOGE(TAG, "Failed reseting filter block");
-        this->state_ = ERROR_NOT_CONFIGURED;
-        this->mark_failed();
-        return;
-      }
-      this->state_ = READY_OK;
-      ESP_LOGCONFIG(TAG, "  Setup complete.");
-      break;
-    default:
-      ESP_LOGE(TAG, "Invalid internal setup stage");
-      this->state_ = ERROR_NOT_CONFIGURED;
-      this->mark_failed();
-      return;
-  }
-}
-
-void LIS2DH12Component::loop() {
-  
+  // Notify all general listeners of the failure
+  this->general_listeners_on_failure();
 }
 
 void LIS2DH12Component::dump_config() {
@@ -98,14 +59,20 @@ void LIS2DH12Component::dump_config() {
     case StateCode::CONFIGURING_DEVICE:
       ESP_LOGCONFIG(TAG, "  State: Configuring device");
       break;
+    case StateCode::WAITING_FOR_ACCEL_DATA:
+      ESP_LOGCONFIG(TAG, "  State: Waiting for acceleration data");
+      break;
+    case StateCode::WAITING_FOR_TEMP_DATA:
+      ESP_LOGCONFIG(TAG, "  State: Waiting for temperature data");
+      break;
     case StateCode::BUSY:
       ESP_LOGCONFIG(TAG, "  State: Busy");
       break;
     case StateCode::ERROR:
-      ESP_LOGE(TAG, "  State: General error");
+      ESP_LOGE(TAG, "  State: Unspecified error");
       break;
     case StateCode::ERROR_TIMEOUT:
-      ESP_LOGE(TAG, "  State: Timeout exceeded");
+      ESP_LOGE(TAG, "  State: LIS2DH12 timed out");
       break;
     case StateCode::ERROR_NOT_FOUND:
       ESP_LOGE(TAG, "  State: LIS2DH12 not found");
@@ -121,15 +88,22 @@ void LIS2DH12Component::dump_config() {
       break;
   }
 
-  if(this->listeners_.size() > 0) {
-    ESP_LOGCONFIG(TAG, "  Number of listeners: %u", this->listeners_.size());
+  if(this->general_listeners_.size() > 0) {
+    size_t totalListenersCount = this->general_listeners_.size();
+    size_t sensorListenersCount = this->sensor_listeners_.size();
+    size_t clickListenersCount = this->click_listeners_.size();
+    size_t generalListenersCount = totalListenersCount - sensorListenersCount - clickListenersCount;
+    ESP_LOGCONFIG(TAG, "  Listeners:");
+    if (generalListenersCount > 0)
+      ESP_LOGCONFIG(TAG, "    General: %zu", generalListenersCount);
+    if (sensorListenersCount > 0)
+      ESP_LOGCONFIG(TAG, "    Sensor:  %zu", sensorListenersCount);
+    if (clickListenersCount > 0)
+      ESP_LOGCONFIG(TAG, "    Click:   %zu", clickListenersCount);
+    if (generalListenersCount != totalListenersCount && generalListenersCount > 0)
+      ESP_LOGCONFIG(TAG, "    Total:   %zu", totalListenersCount);
   }
 
-  if (this->is_failed()) {
-    ESP_LOGE(TAG, "Component failed!");
-  }
-
-//#ifdef USE_SENSOR
   ESP_LOGCONFIG(TAG, "  Block Data Update: %s", ONOFF(this->current_config_.block_data_update == PROPERTY_ENABLE));
 
   if (this->current_config_.data_rate == LIS2DH12_POWER_DOWN) {
@@ -214,15 +188,10 @@ void LIS2DH12Component::dump_config() {
   }
 
   ESP_LOGCONFIG(TAG, "  Internal temperature sensor: %s", ONOFF(this->current_config_.temperature_en == LIS2DH12_TEMP_ENABLE));
-//#endif
 
-  bool click_enabled = current_config_.click.is_enabled();
-  ESP_LOGCONFIG(TAG, "  Click detection: %s", ONOFF(click_enabled));
-  bool printClickConfig = click_enabled;
-#ifdef USE_BINARY_SENSOR
-  printClickConfig = true;
-#endif
-  if(printClickConfig) {
+  bool clickEnabled = this->current_config_.click.is_enabled();
+  ESP_LOGCONFIG(TAG, "  Click detection: %s", ONOFF(clickEnabled));
+  if(clickEnabled || click_listeners_.size() > 0) {
     ESP_LOGCONFIG(TAG, "    Double click: %s", ONOFF(current_config_.click.double_en == PROPERTY_ENABLE));
     ESP_LOGCONFIG(TAG, "    Interrupt mode: %s", (current_config_.click.interrupt_mode == LIS2DH12_TAP_LATCHED) ? "Active until read" : "Active for duration of latency window");
     ESP_LOGCONFIG(TAG, "    Threshold: %d (0x%02X)", current_config_.click.threshold, current_config_.click.threshold);
@@ -235,143 +204,317 @@ void LIS2DH12Component::dump_config() {
     ESP_LOGCONFIG(TAG, "      Window:  %d (0x%02X)", current_config_.click.timing.time_window, current_config_.click.timing.time_window);
     ESP_LOGCONFIG(TAG, "      Latency: %d (0x%02X)", current_config_.click.timing.time_latency, current_config_.click.timing.time_latency);
   }
-
-  /*LOG_UPDATE_INTERVAL(this);
-  LOG_SENSOR("  ", "Acceleration X", this->accel_x_sensor_);
-  LOG_SENSOR("  ", "Acceleration Y", this->accel_y_sensor_);
-  LOG_SENSOR("  ", "Acceleration Z", this->accel_z_sensor_);
-  LOG_SENSOR("  ", "Temperature", this->temperature_sensor_);*/
 }
 
-// todo, add force set
-void LIS2DH12Component::apply_device_configuration(LIS2DH12Config config, bool force) {
+
+void LIS2DH12Component::setup() {
+  this->state_ = SETUP_STAGE_0;
+  this->setup_done_ = false;
+  ESP_LOGCONFIG(TAG, "Setting up LIS2DH12...");
+
+  ESP_LOGCONFIG(TAG, "  Identifying device...");
+  if (!this->is_device_present()) {
+    ESP_LOGE(TAG, "Device not found, state = %d", this->state_);
+    this->mark_failed();
+    return;
+  }
+
+  ESP_LOGCONFIG(TAG, "  Configuring device...");
+  this->state_ = SETUP_STAGE_1;
+  this->status_set_warning("configuring");
+  if(!(this->apply_device_configuration(this->new_config_, true))) {
+    ESP_LOGE(TAG, "Failed to configure device, state = %d", this->state_);
+    this->mark_failed();
+    return;
+  }
+
+  // Mark as failed if state is unexpected
+  if (this->state_ != CONFIGURING_DEVICE && this->state_ != SETUP_STAGE_1) {
+    ESP_LOGE(TAG, "Unexpected state: %d", this->state_);
+    this->mark_failed();
+    return;
+  }
+}
+
+void LIS2DH12Component::loop() {
+  // Check if last step of setup is complete
+  if (!this->setup_done_ && this->state_ == SETUP_STAGE_1) {
+    // Mark setup as done and set state to READY_OK
+    this->setup_done_ = true;
+    this->state_ = READY_OK;
+    this->status_clear_warning();
+    ESP_LOGCONFIG(TAG, "Setup complete.");
+    this->general_listeners_on_ready();
+  }
+
+  // If setup is not done, return
+  if (!this->setup_done_) {
+    return;
+  }
+
+  // Skip loop if configuration is in progress
+  if (this->state_ == CONFIGURING_DEVICE) {
+    ESP_LOGD(TAG, "Configuration in progress, skipping loop...");
+    return;
+  }
+
+  // Mark as failed if state is unexpected
+  if (this->state_ != READY_OK && 
+      this->state_ != WAITING_FOR_ACCEL_DATA && 
+      this->state_ != WAITING_FOR_TEMP_DATA &&
+      this->state_ != GOT_REQUESTED_DATA) {
+    ESP_LOGE(TAG, "Unexpected state: %d", this->state_);
+    this->mark_failed();
+    return;
+  }
+  // Normal operation
+
+  // Check for click interrupt if needed
+  if (this->click_listeners_.size() > 0 && this->current_config_.click.is_enabled()) {
+    lis2dh12_click_src_t click_source;
+    if(lis2dh12_tap_source_get(&this->lis2dh12_dev_ctx_, &click_source) != ST_SUCCESS) {
+      ESP_LOGE(TAG, "Failed to get click source");
+      this->state_ = ERROR_NOT_RESPONDING;
+      this->mark_failed();
+      return;
+    }
+
+    // If click interrupt flag is set, notify listeners
+    if (click_source.ia == PROPERTY_ENABLE) {
+      this->click_listeners_on_click(click_source);
+    }
+  }
+
+  // Check if sensor listeners requested an update
+  if (this->state_ == READY_OK) {
+    // Set to true if any sensor listener needs an update
+    bool readSensorData = false;
+
+    // // TODO: Is this more efficient than the for loop below? 
+    //
+    // // Loop thru all sensor listeners
+    // readSensorData = std::any_of(
+    //   sensor_listeners_.begin(), 
+    //   sensor_listeners_.end(),
+    //   [](LIS2DH12SensorListener *listener) {
+    //       return listener != nullptr && listener->needs_update();
+    //   }
+    // );
+
+    // Loop thru all sensor listeners
+    for (auto *listener : sensor_listeners_) {
+      // On first sensor listener that needs an update, set readSensorData to true
+      if (listener != nullptr && listener->needs_update()) {
+        readSensorData = true;
+        break;
+      }
+    }
+
+    // If any sensor listener needs an update, wait for new data
+    if (readSensorData) {
+      this->state_ = WAITING_FOR_ACCEL_DATA;      
+    }
+  }
+
+  // Check if new acceleration data is ready
+  if (this->state_ == WAITING_FOR_ACCEL_DATA) {
+    uint8_t accelDataReady;
+    if(lis2dh12_xl_data_ready_get(&this->lis2dh12_dev_ctx_, &accelDataReady) != ST_SUCCESS) {
+      ESP_LOGE(TAG, "Failed to read status register");
+      this->state_ = ERROR_NOT_RESPONDING;
+      this->mark_failed();
+      return;
+    }
+
+    // If new acceleration data is ready, wait for temperature data if needed
+    if (accelDataReady == PROPERTY_ENABLE) {
+      this->state_ = (this->current_config_.temperature_en == LIS2DH12_TEMP_ENABLE) ? WAITING_FOR_TEMP_DATA : GOT_REQUESTED_DATA;
+    }
+  }
+
+  // Check if new temperature data is ready
+  if (this->state_ == WAITING_FOR_TEMP_DATA) {
+    uint8_t tempDataReady;
+    if(lis2dh12_temp_data_ready_get(&this->lis2dh12_dev_ctx_, &tempDataReady) != ST_SUCCESS) {
+      ESP_LOGE(TAG, "Failed to read status register");
+      this->state_ = ERROR_NOT_RESPONDING;
+      this->mark_failed();
+      return;
+    }
+
+    if (tempDataReady == PROPERTY_ENABLE) {
+      this->state_ = GOT_REQUESTED_DATA;
+    }
+  }
+
+  // If all requested data is ready, read it and notify listeners
+  if (this->state_ == GOT_REQUESTED_DATA) {
+    SensorData sensor_data = this->get_sensor_data(this->current_config_.temperature_en == LIS2DH12_TEMP_ENABLE);
+
+    this->state_ = READY_OK;
+    this->sensor_listeners_on_sensor_update(sensor_data);
+  }
+
+  
+  this->status_clear_warning();
+}
+
+bool LIS2DH12Component::apply_device_configuration(LIS2DH12Config config, bool force) {
   if (this->state_ == CONFIGURING_DEVICE) {
     ESP_LOGE(TAG, "Invalid state, configuration already in progress.");
     this->state_ = ERROR_NOT_CONFIGURED;
-    this->mark_failed();
-    return;
+    return false;
   }
   
   if( !force && (this->current_config_ == config) ) {
     ESP_LOGW(TAG, "Configuration already applied.");
-    return;
+    return true;
   }
 
-  ESP_LOGCONFIG(TAG, "Applying new configuration:");
   StateCode oldState = state_;
   this->state_ = CONFIGURING_DEVICE;
 
-  LIS2DH12_CONFIGURATION_ERROR_CHECK(this->current_config_.block_data_update, config.block_data_update, force,
-                                    "  Block data update...", lis2dh12_block_data_update_set(&this->lis2dh12_dev_ctx, config.block_data_update), 
+  ESP_LOGCONFIG(TAG, "Applying new configuration:");
+  LIS2DH12Config oldConfig = this->current_config_;
+  LIS2DH12Config newConfig = this->current_config_;
+
+  LIS2DH12_CONFIGURATION_ERROR_CHECK(newConfig.block_data_update, config.block_data_update, force,
+                                    "  Block data update...", lis2dh12_block_data_update_set(&this->lis2dh12_dev_ctx_, config.block_data_update), 
                                     "Failed enabling block data update.", "  Block data update already set.");
 
-  LIS2DH12_CONFIGURATION_ERROR_CHECK(this->current_config_.operation_mode, config.operation_mode, force,
-                                    "  Operating mode...", lis2dh12_operating_mode_set(&this->lis2dh12_dev_ctx, config.operation_mode), 
+  LIS2DH12_CONFIGURATION_ERROR_CHECK(newConfig.operation_mode, config.operation_mode, force,
+                                    "  Operating mode...", lis2dh12_operating_mode_set(&this->lis2dh12_dev_ctx_, config.operation_mode), 
                                     "Failed setting operating mode.", "  Operating mode already set.");
 
-  ESP_LOGCONFIG(TAG, "  Sensor:");
+  if (this->state_ == CONFIGURING_DEVICE) 
+    ESP_LOGCONFIG(TAG, "  Sensor:");
 
-  LIS2DH12_CONFIGURATION_ERROR_CHECK(this->current_config_.data_rate, config.data_rate, force,
-                                    "    Data rate...", lis2dh12_data_rate_set(&this->lis2dh12_dev_ctx, config.data_rate),
+  LIS2DH12_CONFIGURATION_ERROR_CHECK(newConfig.data_rate, config.data_rate, force,
+                                    "    Data rate...", lis2dh12_data_rate_set(&this->lis2dh12_dev_ctx_, config.data_rate),
                                     "Failed setting data rate.", "    Data rate already set.");
 
-  LIS2DH12_CONFIGURATION_ERROR_CHECK(this->current_config_.full_scale_range, config.full_scale_range, force,
-                                    "    Full scale range...", lis2dh12_full_scale_set(&this->lis2dh12_dev_ctx, config.full_scale_range),
+  LIS2DH12_CONFIGURATION_ERROR_CHECK(newConfig.full_scale_range, config.full_scale_range, force,
+                                    "    Full scale range...", lis2dh12_full_scale_set(&this->lis2dh12_dev_ctx_, config.full_scale_range),
                                     "Failed setting full scale range.", "    Full scale range already set.");
   
-  LIS2DH12_CONFIGURATION_ERROR_CHECK(this->current_config_.temperature_en, config.temperature_en, force,
-                                    "    Temperature...", lis2dh12_temperature_meas_set(&this->lis2dh12_dev_ctx, config.temperature_en),
+  LIS2DH12_CONFIGURATION_ERROR_CHECK(newConfig.temperature_en, config.temperature_en, force,
+                                    "    Temperature...", lis2dh12_temperature_meas_set(&this->lis2dh12_dev_ctx_, config.temperature_en),
                                     "Failed setting temperature sensor.", "    Temperature sensor already set.");
 
-  if ( (this->current_config_.click != config.click) || force ) {
+  if ( (this->state_ == CONFIGURING_DEVICE) ||
+       (newConfig.click != config.click) || 
+        force ) {
     ESP_LOGCONFIG(TAG, "  Click:");
 
-    LIS2DH12_CONFIGURATION_ERROR_CHECK(this->current_config_.click.interrupt_mode, config.click.interrupt_mode, force,
-                                    "    Interrupt mode...", lis2dh12_tap_notification_mode_set(&this->lis2dh12_dev_ctx, config.click.interrupt_mode),
+    LIS2DH12_CONFIGURATION_ERROR_CHECK(newConfig.click.interrupt_mode, config.click.interrupt_mode, force,
+                                    "    Interrupt mode...", lis2dh12_tap_notification_mode_set(&this->lis2dh12_dev_ctx_, config.click.interrupt_mode),
                                     "Failed setting interrupt mode.", "    Interrupt mode already set.");
 
-    LIS2DH12_CONFIGURATION_ERROR_CHECK(this->current_config_.click.threshold, config.click.threshold, force,
-                                    "    Threshold...", lis2dh12_tap_threshold_set(&this->lis2dh12_dev_ctx, config.click.threshold),
+    LIS2DH12_CONFIGURATION_ERROR_CHECK(newConfig.click.threshold, config.click.threshold, force,
+                                    "    Threshold...", lis2dh12_tap_threshold_set(&this->lis2dh12_dev_ctx_, config.click.threshold),
                                     "Failed setting threshold.", "    Threshold already set.");
 
-    if ( (this->current_config_.click.double_en != config.click.double_en) || 
-         (this->current_config_.click.axis != config.click.axis) || 
-         force ) {
+    if ( (this->state_ == CONFIGURING_DEVICE) || 
+         (newConfig.click.double_en != config.click.double_en) || 
+         (newConfig.click.axis != config.click.axis) || 
+          force ) {
       lis2dh12_click_cfg_t click_cfg; // interrupts, maybe not needed 
       bool doubleClickEnabled = (config.click.double_en == PROPERTY_ENABLE);
 
-      if (lis2dh12_tap_conf_get(&this->lis2dh12_dev_ctx, &click_cfg) != ST_SUCCESS) {
+      if ( (this->state_ == CONFIGURING_DEVICE) || 
+           (lis2dh12_tap_conf_get(&this->lis2dh12_dev_ctx_, &click_cfg) != ST_SUCCESS) ) {
         ESP_LOGE(TAG, "Failed getting axis and double click configuration.");
         this->state_ = ERROR_NOT_CONFIGURED;
-        this->mark_failed();
-        return;
       }
 
-      if ( (this->current_config_.click.axis != config.click.axis) || force ) {
+      if ( (this->state_ == CONFIGURING_DEVICE) ||
+           (newConfig.click.axis != config.click.axis) || 
+            force ) {
         ESP_LOGCONFIG(TAG, "    Axis:");
 
-        if ( (this->current_config_.click.axis.x_en != config.click.axis.x_en) || force ) {
+        if ( (newConfig.click.axis.x_en != config.click.axis.x_en) || force ) {
           ESP_LOGCONFIG(TAG, "      X axis...");
           click_cfg.xd = doubleClickEnabled ? config.click.axis.x_en : PROPERTY_DISABLE;
           click_cfg.xs = !doubleClickEnabled ? config.click.axis.x_en : PROPERTY_DISABLE;
         }
 
-        if ( (this->current_config_.click.axis.y_en != config.click.axis.y_en) || force ) {
+        if ( (newConfig.click.axis.y_en != config.click.axis.y_en) || force ) {
           ESP_LOGCONFIG(TAG, "      Y axis...");
           click_cfg.yd = doubleClickEnabled ? config.click.axis.y_en : PROPERTY_DISABLE;
           click_cfg.ys = !doubleClickEnabled ? config.click.axis.y_en : PROPERTY_DISABLE;
         }
 
-        if ( (this->current_config_.click.axis.z_en != config.click.axis.z_en) || force ) {
+        if ( (newConfig.click.axis.z_en != config.click.axis.z_en) || force ) {
           ESP_LOGCONFIG(TAG, "      Z axis...");
           click_cfg.zd = doubleClickEnabled ? config.click.axis.z_en : PROPERTY_DISABLE;
           click_cfg.zs = !doubleClickEnabled ? config.click.axis.z_en : PROPERTY_DISABLE;
         }
       }
 
-      if ( (this->current_config_.click.double_en != config.click.double_en) || force ) {
+      if ( (this->state_ == CONFIGURING_DEVICE) ||
+           (newConfig.click.double_en != config.click.double_en) || 
+            force ) {
         if(doubleClickEnabled)
           ESP_LOGCONFIG(TAG, "    Double click...");
         else
           ESP_LOGCONFIG(TAG, "    Single click...");
       }
 
-      if (lis2dh12_tap_conf_set(&this->lis2dh12_dev_ctx, &click_cfg) != ST_SUCCESS) {
+      if ( (this->state_ == CONFIGURING_DEVICE) ||
+           (lis2dh12_tap_conf_set(&this->lis2dh12_dev_ctx_, &click_cfg) != ST_SUCCESS) ) {
         ESP_LOGE(TAG, "Failed setting axis and click type configuration.");
         this->state_ = ERROR_NOT_CONFIGURED;
-        this->mark_failed();
-        return;
       }
     }
 
-    if( (this->current_config_.click.timing != config.click.timing) || force ) {
+    if( (this->state_ == CONFIGURING_DEVICE) ||
+        (newConfig.click.timing != config.click.timing) || 
+         force ) {
       ESP_LOGCONFIG(TAG, "    Timing:");
 
-      LIS2DH12_CONFIGURATION_ERROR_CHECK(this->current_config_.click.timing.time_limit, config.click.timing.time_limit, force,
-                                    "      Time limit...", lis2dh12_shock_dur_set(&this->lis2dh12_dev_ctx, config.click.timing.time_limit),
+      LIS2DH12_CONFIGURATION_ERROR_CHECK(newConfig.click.timing.time_limit, config.click.timing.time_limit, force,
+                                    "      Time limit...", lis2dh12_shock_dur_set(&this->lis2dh12_dev_ctx_, config.click.timing.time_limit),
                                     "Failed setting time limit.", "      Time limit already set.");
 
-      LIS2DH12_CONFIGURATION_ERROR_CHECK(this->current_config_.click.timing.time_window, config.click.timing.time_window, force,
-                                    "      Time window...", lis2dh12_double_tap_timeout_set(&this->lis2dh12_dev_ctx, config.click.timing.time_window),
+      LIS2DH12_CONFIGURATION_ERROR_CHECK(newConfig.click.timing.time_window, config.click.timing.time_window, force,
+                                    "      Time window...", lis2dh12_double_tap_timeout_set(&this->lis2dh12_dev_ctx_, config.click.timing.time_window),
                                     "Failed setting time window.", "      Time window already set.");
 
-      LIS2DH12_CONFIGURATION_ERROR_CHECK(this->current_config_.click.timing.time_latency, config.click.timing.time_latency, force,
-                                    "      Time latency...", lis2dh12_quiet_dur_set(&this->lis2dh12_dev_ctx, config.click.timing.time_latency),
+      LIS2DH12_CONFIGURATION_ERROR_CHECK(newConfig.click.timing.time_latency, config.click.timing.time_latency, force,
+                                    "      Time latency...", lis2dh12_quiet_dur_set(&this->lis2dh12_dev_ctx_, config.click.timing.time_latency),
                                     "Failed setting time latency.", "      Time latency already set.");
     }
-
-    this->current_config_.click = config.click;
   }
 
-  this->set_timeout("configDone", TURN_ON_DELAY_MS, [this, oldState, config]() { 
-    this->current_config_ = config;
-    this->state_ = oldState; 
-
-    for (auto &listener : listeners_) {
-      ESP_LOGV(TAG, "Notifying config change...");
-      listener->on_config_change(this->current_config_);
+  if(this->state_ == ERROR_NOT_CONFIGURED) {
+    this->current_config_ = newConfig;
+    ESP_LOGE(TAG, "Failed to set configuration.");
+    return false;
+  }
+  
+  this->set_timeout("configDone", TURN_ON_DELAY_MS, [this, newConfig, oldConfig, oldState]() { 
+    uint8_t reference;
+    if (lis2dh12_filter_reference_get(&lis2dh12_dev_ctx_, &reference) != ST_SUCCESS) {
+      ESP_LOGE(TAG, "Failed reseting filter block");
+      this->state_ = ERROR_NOT_CONFIGURED;
+      this->mark_failed();
+      return;
     }
+
+    //todo compare config and listeners, give warning
+
+    ESP_LOGD(TAG, "New configuration set.");
+    this->current_config_ = newConfig;
+    if (this->state_ == CONFIGURING_DEVICE) {
+      this->state_ = oldState; 
+    } else {
+      ESP_LOGW(TAG, "State changed from %s to %s during configuration timeout", oldState, this->state_);
+    }
+
+    this->general_listeners_on_config_change(newConfig, oldConfig);
   });
+
+  return true;
 }
 
 /*void LIS2DH12Component::update() {
@@ -408,139 +551,58 @@ void LIS2DH12Component::apply_device_configuration(LIS2DH12Config config, bool f
   this->status_clear_warning();
 }*/
 
-/**
- * @brief Get the temperature in Celsius from the LIS2DH12 sensor.
- * 
- * This function reads the raw temperature data from the sensor, waits for new data to be available,
- * and then converts the raw data to Celsius based on the sensor's operating mode.
- * 
- * @return The temperature in Celsius if successful, NAN otherwise.
- */
-/*float LIS2DH12Component::get_temperature_celsius()
+
+float LIS2DH12Component::get_temperature_celsius()
 {
   ESP_LOGV(TAG, "Reading Temperature...");
 
-  // Check if the temperature sensor is set, if not, try enabling it
-  if (!this->temperature_sensor_set_) {
-    ESP_LOGW(TAG, "Temperature sensor not set");
-
-    if (lis2dh12_temperature_meas_set(&lis2dh12_dev_ctx, LIS2DH12_TEMP_ENABLE) != 0) {
-      ESP_LOGE(TAG, "Failed enabling temperature sensor");
-      this->status_set_warning("TEMP_EN set fail");
-      return NAN;
-    }
-  }
-
-  // Wait for new temperature data to become available, with a timeout
-  auto millisStart = millis();
-  uint8_t newTempAvailable = 0;
-  while ((newTempAvailable != 1) && ((millis() - millisStart) < LIS2DH12_TEMPERATURE_READ_TIMEOUT_MS)) {
-    if (lis2dh12_temp_data_ready_get(&lis2dh12_dev_ctx, &newTempAvailable) != 0) {
-      ESP_LOGE(TAG, "Temperature data ready read failed");
-      this->status_set_warning("TDA get fail");
-      return NAN;
-    }
-
-    yield();  // Allow other tasks to run
-  }
-
-  // Check if new temperature data is not available after timeout
-  if (newTempAvailable == 0) {
-    ESP_LOGE(TAG, "Timed out waiting for new temperature data");
-    this->status_set_warning("TDA timeout");
+  lis2dh12_op_md_t opMode;
+  // Read the operation mode
+  if (lis2dh12_operating_mode_get(&this->lis2dh12_dev_ctx_, &opMode) != 0) {
+    ESP_LOGE(TAG, "Operation mode read failed");
+    this->state_ = ERROR_NOT_RESPONDING;
+    this->mark_failed();
     return NAN;
-  }
+  }  
 
   int16_t rawData;
   // Read the raw temperature data
-  if (lis2dh12_temperature_raw_get(&lis2dh12_dev_ctx, &rawData) != 0) {
-    ESP_LOGE(TAG, "Temperature raw data read failed");
-    this->status_set_warning("Temp raw read fail");
-    return NAN;
-  }
-
-  lis2dh12_op_md_t opMode;
-  // Read the operation mode
-  if (lis2dh12_operating_mode_get(&lis2dh12_dev_ctx, &opMode) != 0) {
-    ESP_LOGE(TAG, "Operation mode read failed");
-    this->status_set_warning("opMode read fail");
+  if (lis2dh12_temperature_raw_get(&this->lis2dh12_dev_ctx_, &rawData) != 0) {
+    ESP_LOGE(TAG, "Temperature data read failed");
+    this->state_ = ERROR_NOT_RESPONDING;
+    this->mark_failed();
     return NAN;
   }
 
   float_t temperatureC;
-
-  // Convert the raw temperature data to Celsius
+  // Convert the raw temperature data to Celsius based on the operation mode
   switch (opMode)
   {
-    case LIS2DH12_HR_12bit: //High resolution mode
+    case LIS2DH12_HR_12bit: // High resolution mode
       temperatureC = lis2dh12_from_lsb_hr_to_celsius(rawData);
       break;
-    case LIS2DH12_NM_10bit: //Normal mode
+    case LIS2DH12_NM_10bit: // Normal mode
       temperatureC = lis2dh12_from_lsb_nm_to_celsius(rawData);
       break;
-    case LIS2DH12_LP_8bit: //Low power mode
+    case LIS2DH12_LP_8bit: // Low power mode
       temperatureC = lis2dh12_from_lsb_lp_to_celsius(rawData);
       break;
     default:
       ESP_LOGW(TAG, "Invalid operation mode");
-      this->status_set_warning("opMode invalid");
       return NAN;
   }
 
   // Return the temperature in Celsius
   return temperatureC;
-}*/
-
-bool LIS2DH12Component::reset_device(uint8_t timeout_ms) {
-  return true;
-  // Trigger device reset
-  if(lis2dh12_boot_set(&lis2dh12_dev_ctx, PROPERTY_ENABLE) != ST_SUCCESS) {
-    ESP_LOGE(TAG, "Failed to trigger device reset");
-    this->state_ = ERROR_NOT_RESPONDING;
-    this->mark_failed();
-    return false;
-  }
-
-  delay(TURN_ON_DELAY_MS);
-
-  auto start_time = millis();
-  uint8_t boot_state = 1;
-  bool readAtLeastOnce = false;
-  // Wait for the boot state to become 0 or until the timeout is reached
-  while (!readAtLeastOnce || ((millis() - start_time < timeout_ms) && (boot_state != PROPERTY_DISABLE))) {
-    if (lis2dh12_boot_get(&lis2dh12_dev_ctx, &boot_state) != ST_SUCCESS) {
-      ESP_LOGE(TAG, "Failed to read boot state.");
-      this->state_ = ERROR_NOT_RESPONDING;
-      this->mark_failed();
-      return false;
-    }
-    if(boot_state == PROPERTY_DISABLE) {
-      ESP_LOGV(TAG, "Device reset successful");
-      return true;
-    }
-    readAtLeastOnce = true;
-    yield();  // Yield control to other tasks
-  }
-
-  // Check if the reset operation exceeded the timeout
-  if(millis() - start_time > timeout_ms) {
-    ESP_LOGE(TAG, "Reset timeout exceeded");
-    this->state_ = ERROR_TIMEOUT;
-    this->status_set_warning();
-    return false;
-  }
-
-  return (boot_state == PROPERTY_DISABLE);  
 }
 
 bool LIS2DH12Component::is_device_present() {
   uint8_t device_id;
 
   // Read the device ID of the LIS2DH12 sensor
-  if (lis2dh12_device_id_get(&lis2dh12_dev_ctx, &device_id) != ST_SUCCESS) {
+  if (lis2dh12_device_id_get(&lis2dh12_dev_ctx_, &device_id) != ST_SUCCESS) {
     ESP_LOGE(TAG, "Failed to read device ID");
     this->state_ = ERROR_NOT_RESPONDING;
-    this->mark_failed();
     return false;
   }
 
@@ -548,13 +610,142 @@ bool LIS2DH12Component::is_device_present() {
   if (device_id != LIS2DH12_ID) {
     ESP_LOGE(TAG, "Device ID mismatch, got: 0x%02X, expected: 0x%02X", device_id, LIS2DH12_ID);
     this->state_ = ERROR_NOT_FOUND;
-    this->mark_failed();
     return false;
   }
 
   // Log the device ID and expected value for comparison
   ESP_LOGV(TAG, "Device ID: 0x%02X, expected: 0x%02X", device_id, LIS2DH12_ID);
   return true;
+}
+
+size_t LIS2DH12Component::click_listeners_on_click(lis2dh12_click_src_t clickSource) {
+  size_t count = this->click_listeners_.size();
+
+  if (count == 0) {
+    return count;
+  }
+
+  count = 0;
+
+  for (auto *listener : this->click_listeners_) {
+    if (listener != nullptr) {
+      listener->on_click(clickSource);
+      count++;
+    } else { 
+      ESP_LOGE(TAG, "Encountered a null listener.");
+    }
+  }
+
+  ESP_LOGVV(TAG, "Called on_click on %zu listeners", count);
+
+  return count;
+}
+
+size_t LIS2DH12Component::sensor_listeners_on_sensor_update(SensorData data) {
+  size_t count = this->sensor_listeners_.size();
+
+  if (count == 0) {
+    return count;
+  }
+
+  count = 0;
+
+  // Iterate over all registered sensor listeners
+  for (auto *listener : this->sensor_listeners_) {
+    if (listener != nullptr && listener->needs_update()) {
+      listener->on_sensor_update(data);
+      count++;
+    } else { 
+      ESP_LOGE(TAG, "Encountered a null listener.");
+    }
+  }
+
+  ESP_LOGVV(TAG, "Called on_sensor_update on %zu listeners", count);
+
+  return count;
+}
+
+size_t LIS2DH12Component::general_listeners_on_config_change(LIS2DH12Config newConfig, LIS2DH12Config oldConfig, bool force) {
+  // Check if there's a change in configuration or if notification is forced
+  if ((oldConfig == newConfig) && !force) {
+    ESP_LOGV(TAG, "No config change detected, skipping on_config_change");
+    return 0;
+  }
+
+  size_t count = this->general_listeners_.size();
+
+  if (count == 0) {
+    ESP_LOGV(TAG, "No listeners found");
+    return count;
+  }
+
+  count = 0;
+
+  // Iterate over all registered listeners and notify them of the configuration change
+  for (auto *listener : this->general_listeners_) {
+    if (listener != nullptr) {
+      listener->on_config_change(newConfig, oldConfig);
+      count++;
+    } else {
+      ESP_LOGE(TAG, "Encountered a null listener.");
+    }
+  }
+
+  ESP_LOGV(TAG, "Called on_config_change on %zu listeners", count);
+
+  return count;
+}
+
+size_t LIS2DH12Component::general_listeners_on_ready()
+{
+  size_t count = this->general_listeners_.size();
+
+  if (count == 0) {
+    ESP_LOGV(TAG, "No listeners found");
+    return count;
+  }
+
+  count = 0;
+
+  // Iterate over all listeners and call their on_ready method
+  for (auto *listener : this->general_listeners_) {
+    if (listener != nullptr) {
+      listener->on_ready();
+      count++;
+    } else {
+      ESP_LOGE(TAG, "Encountered a null listener.");
+    }
+  }
+
+  ESP_LOGV(TAG, "Called on_ready on %zu listeners", count);
+
+  return count;
+}
+
+size_t LIS2DH12Component::general_listeners_on_failure()
+{
+  size_t count = this->general_listeners_.size();
+
+  if (count == 0) {
+    ESP_LOGV(TAG, "No listeners found");
+    return count;
+  }
+
+  count = 0;
+
+  // Iterate over all listeners and call their on_failure method
+  for (auto *listener : this->general_listeners_) {
+    if(listener != nullptr) {
+      listener->on_failure();
+      count++;
+    } else {
+      ESP_LOGE(TAG, "Encountered a null listener.");
+    }
+  }
+
+  ESP_LOGV(TAG, "Called on_failure on %zu listeners", count);
+
+  return count;
 }
 
 int32_t LIS2DH12Component::platform_write_reg(void *handle, uint8_t reg, const uint8_t *bufp, uint16_t len) {
@@ -587,7 +778,7 @@ int32_t LIS2DH12Component::platform_read_reg(void *handle, uint8_t reg, uint8_t 
   // For multi-byte reads, the first bit of the register address must be set to 1
   if (len > 1)
   {
-    ESP_LOGVV(TAG, "Multi-byte read at reg: 0x%02X", reg);
+    ESP_LOGVV(TAG, "Multi-byte read at reg: 0x%02X, len: %d", reg, len);
     reg |= 0x80;
   }
 
