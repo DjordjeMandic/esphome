@@ -53,9 +53,6 @@ void LIS2DH12Component::dump_config() {
     case StateCode::SEARCHING_FOR_DEVICE:
       ESP_LOGCONFIG(TAG, "  State: Searching for device");
       break;
-    case StateCode::RESETTING_DEVICE:
-      ESP_LOGCONFIG(TAG, "  State: Resetting device");
-      break;
     case StateCode::CONFIGURING_DEVICE:
       ESP_LOGCONFIG(TAG, "  State: Configuring device");
       break;
@@ -64,6 +61,9 @@ void LIS2DH12Component::dump_config() {
       break;
     case StateCode::WAITING_FOR_TEMP_DATA:
       ESP_LOGCONFIG(TAG, "  State: Waiting for temperature data");
+      break;
+    case StateCode::GOT_REQUESTED_DATA:
+      ESP_LOGCONFIG(TAG, "  State: Got requested sensor data");
       break;
     case StateCode::BUSY:
       ESP_LOGCONFIG(TAG, "  State: Busy");
@@ -285,76 +285,80 @@ void LIS2DH12Component::loop() {
     }
   }
 
-  // Check if sensor listeners requested an update
-  if (this->state_ == READY_OK) {
-    // Set to true if any sensor listener needs an update
-    bool readSensorData = false;
-
-    // // TODO: Is this more efficient than the for loop below? 
-    //
-    // // Loop thru all sensor listeners
-    // readSensorData = std::any_of(
-    //   sensor_listeners_.begin(), 
-    //   sensor_listeners_.end(),
-    //   [](LIS2DH12SensorListener *listener) {
-    //       return listener != nullptr && listener->needs_update();
-    //   }
-    // );
-
-    // Loop thru all sensor listeners
-    for (auto *listener : sensor_listeners_) {
-      // On first sensor listener that needs an update, set readSensorData to true
-      if (listener != nullptr && listener->needs_update()) {
-        readSensorData = true;
+  // Set to true if at least one sensor listener needs temperature
+  bool needsTemperature = false;
+  // Listener data reading
+  switch(this->state_) {
+    case READY_OK:
+      // Set to true if any sensor listener needs an update
+      bool readSensorData = false;
+      // TODO: Compare speed of `for (auto *x : std::vector<*T>)` vs `std::any_of()`
+      // TODO: Compare speed of one combined for loop vs two separate for loops
+      size_t totalCount = sensor_listeners_.size();
+      size_t i = 0;
+      // Find first sensor listener that needs an update, needsTemperature will be set to true if needed
+      for (i = 0; !readSensorData && (i < totalCount); i++) {
+        if (sensor_listeners_[i] != nullptr) {
+          readSensorData |= sensor_listeners_[i]->needs_update(&needsTemperature);
+        }
+      }
+      // Check if other listeners need temperature only if none of the sensor listeners needed it yet
+      for(i++; !needsTemperature && (i < totalCount); i++) {
+        if (sensor_listeners_[i] != nullptr) {
+          sensor_listeners_[i]->needs_update(&needsTemperature);
+        }
+      }
+      // Break if no sensor listeners need data, return and repeat listener check in next loop
+      if (!readSensorData) {
         break;
       }
-    }
-
-    // If any sensor listener needs an update, wait for new data
-    if (readSensorData) {
-      this->state_ = WAITING_FOR_ACCEL_DATA;      
-    }
-  }
-
-  // Check if new acceleration data is ready
-  if (this->state_ == WAITING_FOR_ACCEL_DATA) {
-    uint8_t accelDataReady;
-    if(lis2dh12_xl_data_ready_get(&this->lis2dh12_dev_ctx_, &accelDataReady) != ST_SUCCESS) {
-      ESP_LOGE(TAG, "Failed to read status register");
-      this->state_ = ERROR_NOT_RESPONDING;
+      // If any sensor listener needs an update, wait for new data
+      if (needsTemperature && (this->current_config_.temperature_en != LIS2DH12_TEMP_ENABLE)) {
+        ESP_LOGW(TAG, "Sensor listeners requested temperature data, but internal temperature sensor is not enabled.");
+        needsTemperature = false;
+      }     
+      this->state_ = WAITING_FOR_ACCEL_DATA;
+    case WAITING_FOR_ACCEL_DATA:
+      // If waiting for accel data, check if accel data is ready
+      uint8_t accelDataReady;
+      if(lis2dh12_xl_data_ready_get(&this->lis2dh12_dev_ctx_, &accelDataReady) != ST_SUCCESS) {
+        ESP_LOGE(TAG, "Failed to read status register");
+        this->state_ = ERROR_NOT_RESPONDING;
+        this->mark_failed();
+        return;
+      }
+      // If no data ready, return and repeat in next loop
+      if (accelDataReady != PROPERTY_ENABLE)
+        break;
+      // Change state to skip reading temperature if needed
+      this->state_ = (needsTemperature) ? WAITING_FOR_TEMP_DATA : GOT_REQUESTED_DATA;
+    case WAITING_FOR_TEMP_DATA:
+      // Only read temperature if its needed
+      if (this->state_ == WAITING_FOR_TEMP_DATA) {
+        uint8_t tempDataReady;
+        if(lis2dh12_temp_data_ready_get(&this->lis2dh12_dev_ctx_, &tempDataReady) != ST_SUCCESS) {
+          ESP_LOGE(TAG, "Failed to read status register");
+          this->state_ = ERROR_NOT_RESPONDING;
+          this->mark_failed();
+          return;
+        }
+        // If no data ready, return and repeat in next loop
+        if (tempDataReady != PROPERTY_ENABLE)
+          break;
+      }
+    case GOT_REQUESTED_DATA:
+      // If got requested data, read sensor data and notify listeners
+      // Executed only if entered directly thru this switch or from above case
+      SensorData sensor_data = this->get_sensor_data(this->current_config_.temperature_en == LIS2DH12_TEMP_ENABLE);
+      this->state_ = READY_OK;
+      this->sensor_listeners_on_sensor_update(sensor_data);
+      break;
+    default:
+      ESP_LOGE(TAG, "Unexpected state: %d", this->state_);
+      this->state_ = ERROR;
       this->mark_failed();
       return;
-    }
-
-    // If new acceleration data is ready, wait for temperature data if needed
-    if (accelDataReady == PROPERTY_ENABLE) {
-      this->state_ = (this->current_config_.temperature_en == LIS2DH12_TEMP_ENABLE) ? WAITING_FOR_TEMP_DATA : GOT_REQUESTED_DATA;
-    }
   }
-
-  // Check if new temperature data is ready
-  if (this->state_ == WAITING_FOR_TEMP_DATA) {
-    uint8_t tempDataReady;
-    if(lis2dh12_temp_data_ready_get(&this->lis2dh12_dev_ctx_, &tempDataReady) != ST_SUCCESS) {
-      ESP_LOGE(TAG, "Failed to read status register");
-      this->state_ = ERROR_NOT_RESPONDING;
-      this->mark_failed();
-      return;
-    }
-
-    if (tempDataReady == PROPERTY_ENABLE) {
-      this->state_ = GOT_REQUESTED_DATA;
-    }
-  }
-
-  // If all requested data is ready, read it and notify listeners
-  if (this->state_ == GOT_REQUESTED_DATA) {
-    SensorData sensor_data = this->get_sensor_data(this->current_config_.temperature_en == LIS2DH12_TEMP_ENABLE);
-
-    this->state_ = READY_OK;
-    this->sensor_listeners_on_sensor_update(sensor_data);
-  }
-
   
   this->status_clear_warning();
 }
@@ -501,14 +505,20 @@ bool LIS2DH12Component::apply_device_configuration(LIS2DH12Config config, bool f
       return;
     }
 
-    //todo compare config and listeners, give warning
-
     ESP_LOGD(TAG, "New configuration set.");
     this->current_config_ = newConfig;
     if (this->state_ == CONFIGURING_DEVICE) {
       this->state_ = oldState; 
     } else {
       ESP_LOGW(TAG, "State changed from %s to %s during configuration timeout", oldState, this->state_);
+    }
+
+    if (this->click_listeners_.size() > 0 && !this->current_config_.click.is_enabled()) {
+      ESP_LOGW(TAG, "Click listeners present but click is disabled");
+    }
+
+    if (this->sensor_listeners_.size() > 0 && this->current_config_.data_rate == LIS2DH12_POWER_DOWN) {
+      ESP_LOGW(TAG, "Sensor listeners present but device is powered down");
     }
 
     this->general_listeners_on_config_change(newConfig, oldConfig);
@@ -652,7 +662,7 @@ size_t LIS2DH12Component::sensor_listeners_on_sensor_update(SensorData data) {
 
   // Iterate over all registered sensor listeners
   for (auto *listener : this->sensor_listeners_) {
-    if (listener != nullptr && listener->needs_update()) {
+    if (listener != nullptr && listener->needs_update(nullptr)) {
       listener->on_sensor_update(data);
       count++;
     } else { 

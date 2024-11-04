@@ -8,6 +8,8 @@
 #include "esphome/core/hal.h"
 #include "lis2dh12_reg.h"  // ST platform-independent driver
 
+// todo, create public method for setting individual settings, make one bool to notify that config update is needed
+
 namespace esphome {
 namespace lis2dh12 {
 
@@ -440,12 +442,28 @@ class LIS2DH12Listener {
     /**
      * @brief Called when the device is ready.
      */
-    virtual void on_ready() { this->lis2dh12_ready_ = true; }
+    virtual void on_ready() { this->start_listening(); }
 
     /**
      * @brief Called when the device has failed.
      */
-    virtual void on_failure() { this->lis2dh12_ready_ = false; }
+    virtual void on_failure() { this->stop_listening(); }
+
+    /**
+     * @brief Stops the listening process for this listener.
+     *
+     * This method sets the internal state to indicate that the listener
+     * is no longer ready to receive and process data from the LIS2DH12 device.
+     */
+    void stop_listening() { this->listening_ = false; }
+
+    /**
+     * @brief Starts the listening process for this listener.
+     *
+     * This method sets the internal state to indicate that the listener
+     * is ready to receive and process data from the LIS2DH12 device.
+     */
+    void start_listening() { this->listening_ = true; }
 
     /**
      * @brief Check if the listener is currently ready.
@@ -455,7 +473,7 @@ class LIS2DH12Listener {
      *
      * @return True if the listener is ready, false otherwise.
      */
-    bool is_listening() { return this->lis2dh12_ready_; }
+    bool is_listening() { return this->listening_; }
 
     /**
      * @brief Called when the configuration has changed.
@@ -477,7 +495,7 @@ class LIS2DH12Listener {
      * This flag is set to true when the listener is ready and false when it is not.
      * The `on_ready` and `on_failure` methods change state of this flag.
      */
-    bool lis2dh12_ready_ = false;
+    bool listening_ = false;
 };
 
 /**
@@ -489,11 +507,27 @@ class LIS2DH12Listener {
 class LIS2DH12SensorListener : public LIS2DH12Listener {
   public:
     /**
-     * @brief Returns true if the sensor data needs to be updated.
+     * @brief Checks if the sensor data needs to be updated.
      *
-     * @return True if listener is listening and the sensor data needs to be updated.
+     * This function determines if the sensor data update is required.
+     * It also informs if temperature data is needed.
+     *
+     * @param[out] temperatureRequired Pointer to a boolean that will be set
+     * to true if temperature data is needed. If nullptr is passed, this
+     * parameter is ignored.
+     *
+     * @return True if the listener is active and sensor data needs updating,
+     * false otherwise.
      */
-    virtual bool needs_update() { return this->is_listening() && this->needs_update_; }
+    virtual bool needs_update(bool *temperatureRequired) { 
+      // If the temperatureRequired pointer is valid, update its value
+      if (temperatureRequired != nullptr) {
+        *temperatureRequired |= (this->needs_update(nullptr) && this->needs_temp_);
+      }
+      
+      // Return true if the listener is ready and data update is required
+      return this->is_listening() && this->needs_update_; 
+    }
 
     /**
      * @brief Requests an update.
@@ -520,6 +554,13 @@ class LIS2DH12SensorListener : public LIS2DH12Listener {
      * when the sensor data has been updated.
      */
     bool needs_update_ = false;
+
+    /**
+     * @brief Flag indicating whether temperature data is needed.
+     *
+     * This flag is set to true if this sensor needs temperature data.
+     */
+    bool needs_temp_ = false;
 };
 
 /**
@@ -541,6 +582,8 @@ class LIS2DH12ClickListener : public LIS2DH12Listener {
      */
     virtual ~LIS2DH12ClickListener() = default;  
 };
+
+// TODO Look at GPS, listener with parent as example
 
 /**
  * @brief `LIS2DH12Component` class responsible for interfacing with the LIS2DH12 sensor.
