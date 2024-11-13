@@ -19,14 +19,12 @@ class IrFollowMeData : public IrData {
   IrFollowMeData(const IrData &data) : IrData(data) {}
   // Direct from temperature in celsius and beeper values
   IrFollowMeData(uint8_t temp, bool beeper = false) : IrFollowMeData() {
-    this->set_fahrenheit(false);
-    this->set_temp(temp);
+    this->set_temp(temp, false);
     this->set_beeper(beeper);
   }
   // Direct from temperature, fahrenheit and beeper values
   IrFollowMeData(uint8_t temp, bool fahrenheit, bool beeper) : IrFollowMeData() {
-    this->set_fahrenheit(fahrenheit);
-    this->set_temp(temp);
+    this->set_temp(temp, fahrenheit);
     this->set_beeper(beeper);
   }
 
@@ -37,7 +35,8 @@ class IrFollowMeData : public IrData {
     }
     return this->get_value_(4) - 1;
   }
-  void set_temp(uint8_t val) {
+  void set_temp(uint8_t val, bool fahrenheit = false) {
+    this->set_fahrenheit(fahrenheit);
     if (this->fahrenheit()) {
       // see https://github.com/esphome/feature-requests/issues/1627#issuecomment-1365639966
       val = std::clamp<uint8_t>(val, MIN_TEMP_F, MAX_TEMP_F) - 31;
