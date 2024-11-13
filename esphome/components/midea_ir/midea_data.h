@@ -2,7 +2,7 @@
 
 #include "esphome/components/remote_base/midea_protocol.h"
 #include "esphome/components/climate/climate_mode.h"
-#include <algorithm>
+#include "esphome/core/helpers.h"
 
 namespace esphome {
 namespace midea_ir {
@@ -85,9 +85,9 @@ class FollowMeData : public MideaData {
     this->set_fahrenheit(fahrenheit);
     if (this->fahrenheit()) {
       // see https://github.com/esphome/feature-requests/issues/1627#issuecomment-1365639966
-      val = std::clamp<uint8_t>(val, MIN_TEMP_F, MAX_TEMP_F) - 31;
+      val = esphome::clamp<uint8_t>(val, MIN_TEMP_F, MAX_TEMP_F) - 31;
     } else {
-      val = std::clamp<uint8_t>(val, MIN_TEMP_C, MAX_TEMP_C) + 1;
+      val = esphome::clamp<uint8_t>(val, MIN_TEMP_C, MAX_TEMP_C) + 1;
     }
     this->set_value_(4, val); 
   }
