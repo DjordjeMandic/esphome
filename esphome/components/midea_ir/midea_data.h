@@ -104,9 +104,11 @@ class FollowMeData : public MideaData {
   static const uint8_t MIN_TEMP_C = 0;
   static const uint8_t MAX_TEMP_C = 37;
 
-  // see https://github.com/crankyoldgit/IRremoteESP8266/blob/9bdf8abcb465268c5409db99dc83a26df64c7445/src/ir_Midea.h#L116
+  // see
+  // https://github.com/crankyoldgit/IRremoteESP8266/blob/9bdf8abcb465268c5409db99dc83a26df64c7445/src/ir_Midea.h#L116
   static const uint8_t MIN_TEMP_F = 32;
-  // see https://github.com/crankyoldgit/IRremoteESP8266/blob/9bdf8abcb465268c5409db99dc83a26df64c7445/src/ir_Midea.h#L117
+  // see
+  // https://github.com/crankyoldgit/IRremoteESP8266/blob/9bdf8abcb465268c5409db99dc83a26df64c7445/src/ir_Midea.h#L117
   static const uint8_t MAX_TEMP_F = 99;
 };
 

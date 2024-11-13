@@ -136,7 +136,7 @@ void AirConditioner::do_follow_me(float temperature, bool fahrenheit, bool beepe
 
   char temp_symbol = fahrenheit ? 'F' : 'C';
   ESP_LOGD(Constants::TAG, "Follow me action called with temperature: %f °%c, rounded to: %u °%c", temperature,
-          temp_symbol, temp_uint8, temp_symbol);
+           temp_symbol, temp_uint8, temp_symbol);
 
   // Create and transmit the data
   IrFollowMeData data(temp_uint8, fahrenheit, beeper);
