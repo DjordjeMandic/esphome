@@ -29,7 +29,7 @@ class IrFollowMeData : public IrData {
   }
 
   /* TEMPERATURE */
-  uint8_t temp() const { 
+  uint8_t temp() const {
     if (this->fahrenheit()) {
       return this->get_value_(4) + 31;
     }
@@ -43,7 +43,7 @@ class IrFollowMeData : public IrData {
     } else {
       val = esphome::clamp<uint8_t>(val, MIN_TEMP_C, MAX_TEMP_C) + 1;
     }
-    this->set_value_(4, val); 
+    this->set_value_(4, val);
   }
 
   /* BEEPER */
