@@ -1,7 +1,5 @@
 #pragma once
 
-//#ifdef USE_REMOTE_TRANSMITTER
-
 #include "esphome/components/remote_base/midea_protocol.h"
 #include "esphome/components/climate/climate_mode.h"
 #include "esphome/core/helpers.h"
@@ -124,5 +122,3 @@ class SpecialData : public MideaData {
 
 }  // namespace midea_ir
 }  // namespace esphome
-
-//#endif  // USE_REMOTE_TRANSMITTER

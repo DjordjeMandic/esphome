@@ -3,6 +3,7 @@
 #ifdef USE_ARDUINO
 #ifdef USE_REMOTE_TRANSMITTER
 #include "esphome/components/remote_base/midea_protocol.h"
+#include "esphome/components/midea_ir/midea_data.h"
 
 namespace esphome {
 namespace midea {
