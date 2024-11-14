@@ -37,7 +37,7 @@ from esphome.components.climate import (
 
 CODEOWNERS = ["@dudanov"]
 DEPENDENCIES = ["climate", "uart"]
-AUTO_LOAD = ["sensor", "climate_ir", "coolix", "midea_ir"]
+AUTO_LOAD = ["sensor", "midea_ir"]
 CONF_POWER_USAGE = "power_usage"
 CONF_HUMIDITY_SETPOINT = "humidity_setpoint"
 CONF_FAHRENHEIT = "fahrenheit"
