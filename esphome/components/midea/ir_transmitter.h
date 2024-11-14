@@ -8,12 +8,12 @@ namespace esphome {
 namespace midea {
 
 using remote_base::RemoteTransmitterBase;
-using remote_base::MideaData;
+using IrData = remote_base::MideaData;
 
 class IrTransmitter {
  public:
   void set_transmitter(RemoteTransmitterBase *transmitter) { this->transmitter_ = transmitter; }
-  void transmit(MideaData &data) {
+  void transmit(IrData &data) {
     data.finalize();
     auto transmit = this->transmitter_->transmit();
     remote_base::MideaProtocol().encode(transmit.get_data(), data);
