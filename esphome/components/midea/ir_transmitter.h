@@ -10,6 +10,8 @@ namespace midea {
 
 using remote_base::RemoteTransmitterBase;
 using IrData = remote_base::MideaData;
+using IrFollowMeData = midea_ir::FollowMeData;
+using IrSpecialData = midea_ir::SpecialData;
 
 class IrTransmitter {
  public:

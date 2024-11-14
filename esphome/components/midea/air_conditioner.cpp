@@ -11,9 +11,6 @@ namespace esphome {
 namespace midea {
 namespace ac {
 
-using IrFollowMeData = midea_ir::FollowMeData;
-using IrSpecialData = midea_ir::SpecialData;
-
 static void set_sensor(Sensor *sensor, float value) {
   if (sensor != nullptr && (!sensor->has_state() || sensor->get_raw_state() != value))
     sensor->publish_state(value);
