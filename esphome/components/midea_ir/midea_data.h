@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef USE_REMOTE_TRANSMITTER
+
 #include "esphome/components/remote_base/midea_protocol.h"
 #include "esphome/components/climate/climate_mode.h"
 #include "esphome/core/helpers.h"
@@ -94,7 +96,7 @@ class FollowMeData : public MideaData {
 
   /* BEEPER */
   bool beeper() const { return this->get_value_(3, 128); }
-  void set_beeper(bool value) { this->set_mask_(3, value, 128); }
+  void set_beeper(bool val) { this->set_mask_(3, val, 128); }
 
   /* FAHRENHEIT */
   bool fahrenheit() const { return this->get_value_(2, 32); }
@@ -122,3 +124,5 @@ class SpecialData : public MideaData {
 
 }  // namespace midea_ir
 }  // namespace esphome
+
+#endif // USE_REMOTE_TRANSMITTER

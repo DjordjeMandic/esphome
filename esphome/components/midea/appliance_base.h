@@ -13,6 +13,9 @@
 #include "esphome/core/log.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/climate/climate.h"
+
+// IR
+#include "esphome/components/midea_ir/midea_data.h"
 #include "ir_transmitter.h"
 
 namespace esphome {
