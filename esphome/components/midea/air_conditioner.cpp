@@ -148,7 +148,7 @@ void AirConditioner::do_follow_me(float temperature, bool fahrenheit, bool beepe
 
 void AirConditioner::do_swing_step() {
 #ifdef USE_REMOTE_TRANSMITTER
-  IrSpecialData data(0x01);
+  IrSpecialData data(IrSpecialData::VSWING_STEP);
   this->transmitter_.transmit(data);
 #else
   ESP_LOGW(Constants::TAG, "Action needs remote_transmitter component");
@@ -160,7 +160,7 @@ void AirConditioner::do_display_toggle() {
     this->base_.displayToggle();
   } else {
 #ifdef USE_REMOTE_TRANSMITTER
-    IrSpecialData data(0x08);
+    IrSpecialData data(IrSpecialData::LIGHT_TOGGLE);
     this->transmitter_.transmit(data);
 #else
     ESP_LOGW(Constants::TAG, "Action needs remote_transmitter component");
