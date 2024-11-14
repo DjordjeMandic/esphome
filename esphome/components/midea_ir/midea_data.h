@@ -125,4 +125,4 @@ class SpecialData : public MideaData {
 }  // namespace midea_ir
 }  // namespace esphome
 
-#endif // USE_REMOTE_TRANSMITTER
+#endif  // USE_REMOTE_TRANSMITTER
