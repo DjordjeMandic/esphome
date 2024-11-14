@@ -115,9 +115,21 @@ class FollowMeData : public MideaData {
 class SpecialData : public MideaData {
  public:
   SpecialData(uint8_t code) : MideaData({MIDEA_TYPE_SPECIAL, code, 0xFF, 0xFF, 0xFF}) {}
-  static const uint8_t VSWING_STEP = 1;
-  static const uint8_t VSWING_TOGGLE = 2;
-  static const uint8_t TURBO_TOGGLE = 9;
+
+  // 0x01 is vertical swing toggle for midea, for kaysun and maybe some others its vertical swing step
+  // https://github.com/crankyoldgit/IRremoteESP8266/blob/9bdf8abcb465268c5409db99dc83a26df64c7445/src/ir_Midea.h#L129-L141
+  static const uint8_t VSWING_STEP = 0x01;
+  // 0x02 is Economy mode toggle for midea, for kaysun and maybe some others its vertical switng toggle
+  // https://github.com/crankyoldgit/IRremoteESP8266/blob/9bdf8abcb465268c5409db99dc83a26df64c7445/src/ir_Midea.h#L129-L141
+  static const uint8_t VSWING_TOGGLE = 0x02;
+  static const uint8_t LIGHT_TOGGLE = 0x08;
+  static const uint8_t TURBO_TOGGLE = 0x09;
+  // Mode must be Auto, Cool, or Dry
+  static const uint8_t SELF_CLEAN_TOGGLE = 0x0D;
+  // Mode must be Heat
+  static const uint8_t HEAT_8C_FREEZE_PROTECTION_TOGGLE = 0x0F;
+  static const uint8_t QUIET_ON = 0x12;
+  static const uint8_t QUIET_OFF = 0x13;
 };
 
 }  // namespace midea_ir
