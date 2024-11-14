@@ -173,10 +173,6 @@ MIDEA_ACTION_BASE_SCHEMA = cv.Schema(
 )
 
 # FollowMe action
-MIDEA_FOLLOW_ME_MIN_C = 0
-MIDEA_FOLLOW_ME_MAX_C = 37
-MIDEA_FOLLOW_ME_MIN_F = 32
-MIDEA_FOLLOW_ME_MAX_F = 99
 MIDEA_FOLLOW_ME_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_TEMPERATURE): cv.templatable(cv.temperature),

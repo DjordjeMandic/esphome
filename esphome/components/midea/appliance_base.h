@@ -13,8 +13,6 @@
 #include "esphome/core/log.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/climate/climate.h"
-
-// IR
 #include "ir_transmitter.h"
 
 namespace esphome {
