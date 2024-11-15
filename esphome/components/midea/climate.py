@@ -18,6 +18,7 @@ from esphome.const import (
     CONF_SUPPORTED_SWING_MODES,
     CONF_TIMEOUT,
     CONF_TEMPERATURE,
+    CONF_USE_FAHRENHEIT,
     DEVICE_CLASS_POWER,
     DEVICE_CLASS_TEMPERATURE,
     DEVICE_CLASS_HUMIDITY,
@@ -40,7 +41,6 @@ DEPENDENCIES = ["climate", "uart"]
 AUTO_LOAD = ["sensor", "midea_ir"]
 CONF_POWER_USAGE = "power_usage"
 CONF_HUMIDITY_SETPOINT = "humidity_setpoint"
-CONF_FAHRENHEIT = "fahrenheit"
 midea_ac_ns = cg.esphome_ns.namespace("midea").namespace("ac")
 AirConditioner = midea_ac_ns.class_("AirConditioner", climate.Climate, cg.Component)
 Capabilities = midea_ac_ns.namespace("Constants")
@@ -176,7 +176,7 @@ MIDEA_ACTION_BASE_SCHEMA = cv.Schema(
 MIDEA_FOLLOW_ME_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_TEMPERATURE): cv.templatable(cv.temperature),
-        cv.Optional(CONF_FAHRENHEIT, default=False): cv.templatable(cv.boolean),
+        cv.Optional(CONF_USE_FAHRENHEIT, default=False): cv.templatable(cv.boolean),
         cv.Optional(CONF_BEEPER, default=False): cv.templatable(cv.boolean),
     }
 )
@@ -186,7 +186,7 @@ MIDEA_FOLLOW_ME_SCHEMA = cv.Schema(
 async def follow_me_to_code(var, config, args):
     template_ = await cg.templatable(config[CONF_BEEPER], args, cg.bool_)
     cg.add(var.set_beeper(template_))
-    template_ = await cg.templatable(config[CONF_FAHRENHEIT], args, cg.bool_)
+    template_ = await cg.templatable(config[CONF_USE_FAHRENHEIT], args, cg.bool_)
     cg.add(var.set_fahrenheit(template_))
     template_ = await cg.templatable(config[CONF_TEMPERATURE], args, cg.float_)
     cg.add(var.set_temperature(template_))
