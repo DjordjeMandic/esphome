@@ -38,7 +38,7 @@ from esphome.components.climate import (
 
 CODEOWNERS = ["@dudanov"]
 DEPENDENCIES = ["climate", "uart"]
-AUTO_LOAD = ["sensor", "midea_ir"]
+AUTO_LOAD = ["sensor"]
 CONF_POWER_USAGE = "power_usage"
 CONF_HUMIDITY_SETPOINT = "humidity_setpoint"
 midea_ac_ns = cg.esphome_ns.namespace("midea").namespace("ac")
