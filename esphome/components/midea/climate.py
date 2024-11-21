@@ -187,7 +187,7 @@ async def follow_me_to_code(var, config, args):
     template_ = await cg.templatable(config[CONF_BEEPER], args, cg.bool_)
     cg.add(var.set_beeper(template_))
     template_ = await cg.templatable(config[CONF_USE_FAHRENHEIT], args, cg.bool_)
-    cg.add(var.set_fahrenheit(template_))
+    cg.add(var.set_use_fahrenheit(template_))
     template_ = await cg.templatable(config[CONF_TEMPERATURE], args, cg.float_)
     cg.add(var.set_temperature(template_))
 
