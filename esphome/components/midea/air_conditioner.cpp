@@ -135,7 +135,7 @@ void AirConditioner::do_follow_me(float temperature, bool use_fahrenheit, bool b
       static_cast<uint8_t>(esphome::clamp<long>(std::lroundf(temperature), 0L, static_cast<long>(UINT8_MAX)));
 
   char temp_symbol = use_fahrenheit ? 'F' : 'C';
-  ESP_LOGD(Constants::TAG, "Follow me action called with temperature: %f °%c, rounded to: %u °%c", temperature,
+  ESP_LOGD(Constants::TAG, "Follow me action called with temperature: %.5f °%c, rounded to: %u °%c", temperature,
            temp_symbol, temp_uint8, temp_symbol);
 
   // Create and transmit the data
