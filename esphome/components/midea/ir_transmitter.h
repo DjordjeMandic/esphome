@@ -13,16 +13,16 @@ using IrData = remote_base::MideaData;
 class IrFollowMeData : public IrData {
  public:
   // Default constructor (temp: 30C, beeper: off)
-  FollowMeData() : IrData({MIDEA_TYPE_FOLLOW_ME, 0x82, 0x48, 0x7F, 0x1F}) {}
+  IrFollowMeData() : IrData({MIDEA_TYPE_FOLLOW_ME, 0x82, 0x48, 0x7F, 0x1F}) {}
   // Copy from Base
-  FollowMeData(const IrData &data) : IrData(data) {}
+  IrFollowMeData(const IrData &data) : IrData(data) {}
   // Direct from temperature in celsius and beeper values
-  FollowMeData(uint8_t temp, bool beeper = false) : FollowMeData() {
+  IrFollowMeData(uint8_t temp, bool beeper = false) : IrFollowMeData() {
     this->set_temp(temp, false);
     this->set_beeper(beeper);
   }
   // Direct from temperature, fahrenheit and beeper values
-  FollowMeData(uint8_t temp, bool fahrenheit, bool beeper) : FollowMeData() {
+  IrFollowMeData(uint8_t temp, bool fahrenheit, bool beeper) : IrFollowMeData() {
     this->set_temp(temp, fahrenheit);
     this->set_beeper(beeper);
   }
@@ -67,7 +67,7 @@ class IrFollowMeData : public IrData {
 
 class IrSpecialData : public IrData {
  public:
-  SpecialData(uint8_t code) : IrData({MIDEA_TYPE_SPECIAL, code, 0xFF, 0xFF, 0xFF}) {}
+  IrSpecialData(uint8_t code) : IrData({MIDEA_TYPE_SPECIAL, code, 0xFF, 0xFF, 0xFF}) {}
 };
 
 class IrTransmitter {
