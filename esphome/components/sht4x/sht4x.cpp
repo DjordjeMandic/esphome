@@ -8,6 +8,11 @@ static const char *const TAG = "sht4x";
 
 static const uint8_t MEASURECOMMANDS[] = {0xFD, 0xF6, 0xE0};
 
+/// Sensirion SHT4x datasheet Version 6.6 - April 2024; page 10 & 12
+/// Table 5 - System timing specifications (Soft reset time, 1ms max)
+/// Time between ACK of soft reset command and sensor entering idle state.
+static const uint8_t SOFT_RESET_COMMAND = 0x94;
+
 void SHT4XComponent::start_heater_() {
   uint8_t cmd[] = {MEASURECOMMANDS[this->heater_command_]};
 
@@ -20,7 +25,7 @@ void SHT4XComponent::start_heater_() {
 void SHT4XComponent::setup() {
   ESP_LOGCONFIG(TAG, "Setting up sht4x...");
 
-  auto err = this->write(nullptr, 0);
+  auto err = this->write(&SOFT_RESET_COMMAND, sizeof(SOFT_RESET_COMMAND));
   if (err != i2c::ERROR_OK) {
     this->mark_failed();
     return;
