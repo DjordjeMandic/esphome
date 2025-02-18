@@ -787,11 +787,10 @@ NEC_SCHEMA = cv.typed_schema(
     lower=True,
 )
 
-print(NEC_SCHEMA)
-
 
 @register_binary_sensor("nec", NECBinarySensor, NEC_SCHEMA)
 def nec_binary_sensor(var, config):
+    print(config)
     cg.add(
         var.set_data(
             cg.StructInitializer(
@@ -817,6 +816,7 @@ def nec_dumper(var, config):
 
 @register_action("nec", NECAction, NEC_SCHEMA)
 async def nec_action(var, config, args):
+    print(config)
     template_ = await cg.templatable(config[CONF_ADDRESS], args, cg.uint16)
     cg.add(var.set_address(template_))
     template_ = await cg.templatable(config[CONF_COMMAND], args, cg.uint16)
