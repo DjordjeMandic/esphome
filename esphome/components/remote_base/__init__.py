@@ -767,8 +767,8 @@ NEC_FRAME_SCHEMA = cv.Schema(
 
 NEC_REPEAT_SCHEMA = cv.Schema(
     {
-        cv.Optional(CONF_ADDRESS, default=0): cv.hex_uint16_t,
-        cv.Optional(CONF_COMMAND, default=0): cv.hex_uint16_t,
+        cv.Optional(CONF_ADDRESS, default=0): cv.int_range(min=0, max=0),
+        cv.Optional(CONF_COMMAND, default=0): cv.int_range(min=0, max=0),
         cv.Optional(CONF_REPEATS, default=1): cv.int_range(min=1, max=65535),
     }
 )
@@ -779,16 +779,15 @@ def nec_schema_convert_type_to_enum(config):
     return config
 
 
-NEC_SCHEMA = cv.All(
-    cv.typed_schema(
-        {
-            TYPE_FRAME: NEC_FRAME_SCHEMA,
-            TYPE_REPEAT: NEC_REPEAT_SCHEMA,
-        },
-        lower=True,
-    ),
-    nec_schema_convert_type_to_enum,
+NEC_SCHEMA = cv.typed_schema(
+    {
+        TYPE_FRAME: NEC_FRAME_SCHEMA,
+        TYPE_REPEAT: NEC_REPEAT_SCHEMA,
+    },
+    lower=True,
 )
+
+print(NEC_SCHEMA)
 
 
 @register_binary_sensor("nec", NECBinarySensor, NEC_SCHEMA)
