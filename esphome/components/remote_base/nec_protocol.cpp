@@ -158,11 +158,11 @@ void NECProtocol::dump(const NECData &data) {
   ESP_LOGI(TAG, "Received %s", this->get_protocol_type_and_fields(data).c_str());
 }
 
-std::string NECProtocol::get_protocol_type_and_fields(const NECData &data) const {
+std::string NECProtocol::get_protocol_type_and_fields(const NECData &data) {
   std::string debug_message = "NEC ";
   switch (data.type) {
     case NECCodeType::FRAME_WITH_REPEATS:
-      debug_message += str_sprintf("Frame (%u-bit address)", this->is_extended(data) ? 16 : 8);
+      debug_message += str_sprintf("Frame (%u-bit address)", NECProtocol::is_extended(data) ? 16 : 8);
       break;
     case NECCodeType::REPEATS_ONLY:
       debug_message += "Repeat Code:";
@@ -173,14 +173,14 @@ std::string NECProtocol::get_protocol_type_and_fields(const NECData &data) const
 
   if (data.type != NECCodeType::REPEATS_ONLY) {
     debug_message += ": address=0x";
-    if (this->is_extended(data)) {
+    if (NECProtocol::is_extended(data)) {
       debug_message += str_sprintf("%04X", data.address);
     } else {
       debug_message += str_sprintf("%02X, address#=0x%02X", data.address_lower, data.address_upper);
     }
 
     debug_message += str_sprintf(", command=0x%02X, command#=0x%02X, command_valid=%s,", data.command_lower,
-                                 data.command_upper, YESNO(this->is_command_valid(data)));
+                                 data.command_upper, YESNO(NECProtocol::is_command_valid(data)));
   }
 
   debug_message += str_sprintf(" repeats=%" PRIu16, data.repeats);
