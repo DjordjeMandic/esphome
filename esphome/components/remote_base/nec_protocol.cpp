@@ -29,8 +29,8 @@ void NECProtocol::encode(RemoteTransmitData *dst, const NECData &data) {
     ESP_LOGW(TAG, "High repeat count may cause WDT timeout.");
   }
 
-  if (data.repeats == 0 && data.type != NECCodeType::FRAME_WITH_REPEATS) {
-    ESP_LOGE(TAG, "NECData repeat count must be greater than 0 for type NECCodeType::FRAME_WITH_REPEATS.");
+  if (data.repeats == 0 && data.type == NECCodeType::REPEATS_ONLY) {
+    ESP_LOGE(TAG, "Repeat count must be greater than 0 for repeat only codes.");
   }
 
   // Repeat codes (4 per repeat)
@@ -50,7 +50,7 @@ void NECProtocol::encode(RemoteTransmitData *dst, const NECData &data) {
 
     // Encode Address
     for (uint16_t mask = 1; mask; mask <<= 1) {
-      if (data.frame.address & mask) {
+      if (data.address & mask) {
         dst->item(BIT_HIGH_US, BIT_ONE_LOW_US);  // Logic '1'
       } else {
         dst->item(BIT_HIGH_US, BIT_ZERO_LOW_US);  // Logic '0'
@@ -59,7 +59,7 @@ void NECProtocol::encode(RemoteTransmitData *dst, const NECData &data) {
 
     // Encode Command
     for (uint16_t mask = 1; mask; mask <<= 1) {
-      if (data.frame.address & mask) {
+      if (data.address & mask) {
         dst->item(BIT_HIGH_US, BIT_ONE_LOW_US);  // Logic '1'
       } else {
         dst->item(BIT_HIGH_US, BIT_ZERO_LOW_US);  // Logic '0'
@@ -90,11 +90,8 @@ void NECProtocol::encode(RemoteTransmitData *dst, const NECData &data) {
 
 optional<NECData> NECProtocol::decode(RemoteReceiveData src) {
   NECData data{
-      .frame =
-          {
-              .address = 0,
-              .command = 0,
-          },
+      .address = 0,
+      .command = 0,
       .repeats = 0,  // Start with 0, as the first frame is counted explicitly
       .type = NECCodeType::FRAME_WITH_REPEATS,
   };
@@ -123,7 +120,7 @@ optional<NECData> NECProtocol::decode(RemoteReceiveData src) {
   // Validate address bits
   for (uint16_t mask = 1; mask; mask <<= 1) {
     if (src.expect_item(BIT_HIGH_US, BIT_ONE_LOW_US)) {
-      data.frame.address |= mask;  // Logic '1'
+      data.address |= mask;  // Logic '1'
     } else if (src.expect_item(BIT_HIGH_US, BIT_ZERO_LOW_US)) {
       // Logic '0', since the address is already initialized with 0, `data.address &= ~mask;` is not needed
     } else {
@@ -134,7 +131,7 @@ optional<NECData> NECProtocol::decode(RemoteReceiveData src) {
   // Validate command bits
   for (uint16_t mask = 1; mask; mask <<= 1) {
     if (src.expect_item(BIT_HIGH_US, BIT_ONE_LOW_US)) {
-      data.frame.command |= mask;  // Logic '1'
+      data.command |= mask;  // Logic '1'
     } else if (src.expect_item(BIT_HIGH_US, BIT_ZERO_LOW_US)) {
       // Logic '0', since the command is already initialized with 0, `data.command &= ~mask;` is not needed
     } else {
@@ -148,8 +145,8 @@ optional<NECData> NECProtocol::decode(RemoteReceiveData src) {
   }
 
   // Message frame received, `data.type = NECCodeType::FRAME_WITH_REPEATS` is already set
-  if (data.frame.is_command_valid()) {
-    ESP_LOGW(TAG, "Decoded command invalid: 0x%04X", data.frame.command);
+  if (NECProtocol::is_command_valid(data)) {
+    ESP_LOGW(TAG, "Decoded command invalid: 0x%04X", data.command);
   }
 
   ESP_LOGV(TAG, "Decoded %s", this->get_protocol_type_and_fields_str(data).c_str());
@@ -165,7 +162,7 @@ std::string NECProtocol::get_protocol_type_and_fields_str(const NECData &data) {
   std::string debug_message = "NEC ";
   switch (data.type) {
     case NECCodeType::FRAME_WITH_REPEATS:
-      debug_message += str_sprintf("Frame (%u-bit address)", data.frame.is_address_extended() ? 16 : 8);
+      debug_message += str_sprintf("Frame (%u-bit address)", NECProtocol::is_address_extended(data) ? 16 : 8);
       break;
     case NECCodeType::REPEATS_ONLY:
       debug_message += "Repeat Code:";
@@ -176,14 +173,14 @@ std::string NECProtocol::get_protocol_type_and_fields_str(const NECData &data) {
 
   if (data.type != NECCodeType::REPEATS_ONLY) {
     debug_message += ": address=0x";
-    if (data.frame.is_address_extended()) {
-      debug_message += str_sprintf("%04X", data.frame.address);
+    if (NECProtocol::is_address_extended(data)) {
+      debug_message += str_sprintf("%04X", data.address);
     } else {
-      debug_message += str_sprintf("%02X, address#=0x%02X", data.frame.address_bytes.lo, data.frame.address_bytes.lo);
+      debug_message += str_sprintf("%02X, address#=0x%02X", data.address_bytes.lo, data.address_bytes.lo);
     }
 
-    debug_message += str_sprintf(", command=0x%02X, command#=0x%02X, command_valid=%s,", data.frame.command_bytes.lo,
-                                 data.frame.command_bytes.hi, YESNO(data.frame.is_command_valid()));
+    debug_message += str_sprintf(", command=0x%02X, command#=0x%02X, command_valid=%s,", data.command_bytes.lo,
+                                 data.command_bytes.hi, YESNO(NECProtocol::is_command_valid(data)));
   }
 
   debug_message += str_sprintf(" repeats=%" PRIu16, data.repeats);

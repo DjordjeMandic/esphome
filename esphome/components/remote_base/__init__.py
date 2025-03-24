@@ -29,6 +29,7 @@ from esphome.const import (
     CONF_SECOND,
     CONF_STATE,
     CONF_SYNC,
+    CONF_TIMEOUT,
     CONF_TIMES,
     CONF_TRIGGER_ID,
     CONF_TYPE,
@@ -757,7 +758,8 @@ NEC_CODE_TYPES = {
     TYPE_REPEATS_ONLY: nec_code_type_enum_class.REPEATS_ONLY,
 }
 
-NEC_SCHEMA = cv.Schema(
+# TODO prevent TYPE_REPEATS_ONLY and repeat count 0
+NEC_DATA_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_ADDRESS): cv.hex_uint16_t,
         cv.Required(CONF_COMMAND): cv.hex_uint16_t,
@@ -768,8 +770,21 @@ NEC_SCHEMA = cv.Schema(
     }
 )
 
+NEC_REPEAT_CODE_TIMEOUT_SCHEMA = cv.All(
+    cv.time_period_milliseconds,
+    cv.Range(min=90, max=170),
+)
 
-@register_binary_sensor("nec", NECBinarySensor, NEC_SCHEMA)
+NEC_RECEIVE_SCHEMA = cv.Schema(
+    {
+        cv.Required(CONF_ADDRESS): cv.hex_uint16_t,
+        cv.Required(CONF_COMMAND): cv.hex_uint16_t,
+        cv.Optional(CONF_TIMEOUT, default="130ms"): NEC_REPEAT_CODE_TIMEOUT_SCHEMA,
+    }
+)
+
+
+@register_binary_sensor("nec", NECBinarySensor, NEC_RECEIVE_SCHEMA)
 def nec_binary_sensor(var, config):
     cg.add(
         var.set_data(
@@ -777,11 +792,12 @@ def nec_binary_sensor(var, config):
                 NECData,
                 ("address", config[CONF_ADDRESS]),
                 ("command", config[CONF_COMMAND]),
-                ("repeats", config[CONF_REPEATS]),
-                ("type", config[CONF_TYPE]),
+                ("repeats", 0),
+                ("type", NEC_CODE_TYPES[TYPE_FRAME_WITH_REPEATS]),
             )
         )
     )
+    cg.add(var.set_repeat_timeout_ms(config[CONF_TIMEOUT]))
 
 
 @register_trigger("nec", NECTrigger, NECData)
@@ -794,7 +810,7 @@ def nec_dumper(var, config):
     pass
 
 
-@register_action("nec", NECAction, NEC_SCHEMA)
+@register_action("nec", NECAction, NEC_DATA_SCHEMA)
 async def nec_action(var, config, args):
     template_ = await cg.templatable(config[CONF_ADDRESS], args, cg.uint16)
     cg.add(var.set_address(template_))
