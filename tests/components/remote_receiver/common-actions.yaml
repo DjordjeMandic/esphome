@@ -76,8 +76,8 @@ on_midea:
 on_nec:
   then:
     - logger.log:
-        format: "on_nec: %u %u"
-        args: ["x.address", "x.command"]
+        format: "on_nec: %u %u %u %u"
+        args: ["x.address", "x.command", "x.repeats", "static_cast<uint8_t>(x.type)"]
 on_nexa:
   then:
     - logger.log:

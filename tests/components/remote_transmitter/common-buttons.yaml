@@ -1,5 +1,3 @@
-<<: !include common-nec.yaml
-
 button:
   - platform: template
     name: JVC Off
