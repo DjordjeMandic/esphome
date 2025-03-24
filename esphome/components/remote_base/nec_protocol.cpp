@@ -174,13 +174,14 @@ std::string NECProtocol::get_protocol_type_and_fields_str(const NECData &data) {
   if (data.type != NECCodeType::REPEATS_ONLY) {
     debug_message += ": address=0x";
     if (NECProtocol::is_address_extended(data)) {
-      debug_message += str_sprintf("%04X", data.address);
+      debug_message += str_sprintf("%04" PRIX16, data.address);
     } else {
-      debug_message += str_sprintf("%02X, address#=0x%02X", data.address_bytes.lo, data.address_bytes.lo);
+      debug_message += str_sprintf("%02" PRIX8 ", address#=0x%02" PRIX8, data.address_bytes.lo, data.address_bytes.lo);
     }
 
-    debug_message += str_sprintf(", command=0x%02X, command#=0x%02X, command_valid=%s,", data.command_bytes.lo,
-                                 data.command_bytes.hi, YESNO(NECProtocol::is_command_valid(data)));
+    debug_message +=
+        str_sprintf(", command=0x%02" PRIX8 ", command#=0x%02" PRIX8 ", command_valid=%s,", data.command_bytes.lo,
+                    data.command_bytes.hi, YESNO(NECProtocol::is_command_valid(data)));
   }
 
   debug_message += str_sprintf(" repeats=%" PRIu16, data.repeats);
