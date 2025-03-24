@@ -11,51 +11,43 @@ enum class NECCodeType : uint8_t {
   REPEATS_ONLY         ///< Repeat code without address and command
 };
 
-/// @brief Struct to store NEC protocol data.
-/// @details This structure represents a decoded NEC infrared signal. It includes fields for
-///          address, command, repeat count, and type, supporting both full frames and repeat codes.
+/// @brief Struct representing NEC protocol data.
+/// @details Stores a decoded NEC infrared signal, including address, command, repeat count, and type.
 struct NECData {
-  /// @brief NEC address field, stored as a 16-bit value.
-  /// @details The NEC protocol supports two addressing modes:
-  ///          - **Standard NEC (8-bit addressing)**: The `address_upper` field is the logical inverse of
-  ///          `address_lower`.
-  ///          - **Extended NEC (16-bit addressing)**: Both `address_lower` and `address_upper` contain independent
-  ///          values. If the upper byte is not the inverse of the lower byte, it is treated as an extended NEC address
-  ///          in logs.
+  /// @brief NEC address field (16-bit).
+  /// @details The NEC protocol supports:
+  ///          - **Standard NEC (8-bit address)**: `address_bytes.hi` is the inverse of `address_bytes.lo`.
+  ///          - **Extended NEC (16-bit address)**: Both bytes hold independent values.
   union {
-    uint16_t address;  ///< Full 16-bit NEC address (used in extended NEC mode).
+    uint16_t address;  ///< Full 16-bit NEC address.
     struct {
       uint8_t lo;  ///< Lower 8 bits of the address.
-      uint8_t hi;  ///< Upper 8 bits of the address (inverse of lower in standard NEC).
+      uint8_t hi;  ///< Upper 8 bits (inverse of lower in standard NEC).
     } address_bytes;
   };
 
-  /// @brief NEC command field, always stored as a 16-bit value.
-  /// @details The NEC protocol defines an **8-bit command**, but it is transmitted as **16 bits**, where:
-  ///          - `command_lower` holds the actual 8-bit command.
-  ///          - `command_upper` is its logical inverse.
-  ///          Unlike some implementations that automatically compute the inverse, this protocol requires both values
-  ///          to be explicitly provided. This ensures support for **non-standard NEC signals** where the inverse byte
-  ///          may not strictly adhere to the NEC specification.
+  /// @brief NEC command field (16-bit).
+  /// @details The NEC protocol transmits an 8-bit command as:
+  ///          - `command_bytes.lo`: Actual command value.
+  ///          - `command_bytes.hi`: Logical inverse of `command_bytes.lo`.
+  ///          Some non-standard signals may not follow this inversion rule.
   union {
-    uint16_t
-        command;  ///< Full 16-bit NEC command (lower 8 bits hold the actual command, upper 8 bits are its inverse).
+    uint16_t command;  ///< Full 16-bit NEC command.
     struct {
-      uint8_t lo;  ///< Lower 8 bits (actual command value).
-      uint8_t hi;  ///< Upper 8 bits (logical inverse of `command_lower` in standard NEC).
+      uint8_t lo;  ///< Lower 8 bits (actual command).
+      uint8_t hi;  ///< Upper 8 bits (logical inverse in standard NEC).
     } command_bytes;
   };
 
-  uint16_t repeats;  ///< Number of repeat codes received or transmitted.
-  NECCodeType type;  ///< Type of NEC signal (frame with repeats or repeat codes only).
+  uint16_t repeats;  ///< Number of repeat codes received or to transmit.
+  NECCodeType type;  ///< Type of NEC signal (full frame or repeats only).
 
   /// @brief Equality operator for NECData.
-  /// @details Compares two NECData instances to determine if they represent the same signal.
-  ///          The comparison logic varies based on the NECCodeType:
-  ///          - For `REPEATS_ONLY`, only the repeat count is compared.
-  ///          - For `FRAME_WITH_REPEATS`, the frame (address and command) must match.
+  /// @details Determines if two NEC signals are identical.
+  ///          - For `REPEATS_ONLY`: Only repeat count is compared.
+  ///          - For `FRAME_WITH_REPEATS`: Address and command must match.
   /// @param[in] rhs The NECData instance to compare with.
-  /// @return True if both instances represent the same NEC signal, false otherwise.
+  /// @return True if both instances are equal, false otherwise.
   bool operator==(const NECData &rhs) const {
     switch (type) {
       case NECCodeType::REPEATS_ONLY:
